@@ -20,7 +20,6 @@ hosp_data <- hosp_data %>%
   mutate(post = ifelse(YEAR >= 2012, 1, 0),  
          did = treatment * post)
 
-
 #descriptives
 #count if control or treatment group
 hosp_data %>%
@@ -28,10 +27,16 @@ hosp_data %>%
   summarise(num_hospitals = n()) %>%
   arrange(desc(num_hospitals))
 
-#full time equiv per bed over time by penalty status
-hosp_data <- hosp_data %>%
-  group_by(YEAR, treatment) %>%
-  summarise(ftern_bed = mean(FTERN/ beds, na.rm = TRUE)) %>%
-  ungroup()
+  hosp_data %>%
+  group_by(treatment) %>%
+  summarise(num_hospitals = n_distinct(MCRNUM)) %>%
+  arrange(desc(num_hospitals))
 
 
+# differenece in difference regression 
+did_model <- feols(
+  FTERN ~ did + post + treatment | MCRNUM,  # Fixed effects for hospitals
+  data = hosp_data
+)
+
+summary(did_model)
