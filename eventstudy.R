@@ -33,10 +33,47 @@ hosp_data %>%
   arrange(desc(num_hospitals))
 
 
+# FTERN
+# check for parallel trends
+hosp_data <- hosp_data %>%
+  mutate(event_time = YEAR - 2012)
+
+event_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_data,
+  cluster = ~MCRNUM
+  )
+summary(event_ftern)
+iplot(event_ftern,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent RN and 2012 Penalties")
+
+ggsave("plots/event_ftern.png")
+
 # differenece in difference regression 
 did_model <- feols(
   FTERN ~ did + post + treatment | MCRNUM,  # Fixed effects for hospitals
   data = hosp_data
 )
-
 summary(did_model)
+
+# FTELPN 
+# check for parallel trends
+event_lpn <- feols(
+  FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_data,
+  cluster = ~MCRNUM
+)
+summary(event_lpn)
+
+iplot(event_lpn,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent LPNs and 2012 Penalties")
+
+# diff in diff regression 
+did_model_lpn <- feols(
+  FTELPN ~ did + post + treatment | MCRNUM,  # Fixed effects for hospitals
+  data = hosp_data
+)
+summary(did_model_lpn)
+ggsave("plots/event_ftelpn.png")
