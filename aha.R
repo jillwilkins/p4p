@@ -34,6 +34,10 @@ hosp_data <- hosp_data %>%
 #see what years hospitals were first penalized
 hosp_data %>%
   group_by(first_penalty) %>%
-  summarise(num_hospitals = n()) %>%
-  arrange(desc(num_hospitals))  
+  summarise(num_obs = n()) %>%
+  arrange(desc(num_obs))  
 
+hosp_data %>%
+  group_by(first_penalty) %>%
+  summarise(num_hospitals = n_distinct(MCRNUM)) %>%
+  arrange(desc(num_hospitals))
