@@ -1,7 +1,7 @@
 library(ggplot2)
 library(fixest)
 
-#Now that i have hosp_data, lets check out parallel trends 
+# from hosp_data, assign treatment and control group  
 # treatment group when first penalized == 2012
 hosp_data <- hosp_data %>%
   mutate(treatment = ifelse(first_penalty == "2012", 1, 0)) 
@@ -10,10 +10,11 @@ hosp_data <- hosp_data %>%
 hosp_data <- hosp_data %>%
   mutate(control = ifelse(first_penalty == "none" | first_penalty > 2016, 1, 0))
 
-# filter 
-hosp_data <- hosp_data %>% filter(YEAR <= 2016 & YEAR > 2008)
-hosp_data <- hosp_data %>%
-  filter(treatment == 1 | control == 1)
+# filter out hospitals that are not in treatment or control group
+hosp_data <- hosp_data %>% filter(treatment == 1 | control == 1)
+
+# filter relevant years
+hosp_data <- hosp_data %>% filter(YEAR <= 2016 & YEAR > 2008) 
 
 # Create a treatment-time interaction variable for DiD
 hosp_data <- hosp_data %>%
@@ -22,7 +23,7 @@ hosp_data <- hosp_data %>%
 
 #see sums script for counts by group
 
-# FTERN
+# FTERN 
 # check for parallel trends
 hosp_data <- hosp_data %>%
   mutate(event_time = YEAR - 2012)
@@ -70,8 +71,8 @@ did_ftelpn <- feols(
 )
 summary(did_ftelpn)
 
-# Honest DID 
 
+# Honest DID --------------------------------------------#
 ## Installation
 # Install remotes package if not installed
 install.packages("remotes")
@@ -92,16 +93,16 @@ library(ggplot2)
 library(fixest)
 library(HonestDiD)
 
+twfe_results <- fixest::feols(FTERN ~ i(YEAR, treatment, ref = 2011) | MCRNUM + YEAR,
+                        cluster = "MCRNUM",
+                        data = hosp_data)
+summary(twfe_results)
+
 #save results from original did 
-betahat <- summary(event_ftern)$coefficients #save the coefficients
-# Pull the event-time coefficients only (drops intercept, etc.)
-betahat <- coef(event_ftern)
-betahat <- betahat[grepl("^event_time::", names(betahat))]
+betahat <- summary(twfe_results)$coefficients #save the coefficients
+sigma <- summary(twfe_results)$cov.scaled #save the covariance matrix
 names(betahat)
 
-sigma <- summary(event_ftern)$cov.scaled #save the covariance matrix
-sigma <- vcov(event_ftern, cluster = "MCRNUM")
-sigma <- sigma[names(betahat), names(betahat)]
 
 delta_rm_results <-
 HonestDiD::createSensitivityResults_relativeMagnitudes(
@@ -134,46 +135,43 @@ sensplot_ftern <- sensplot_ftern +
 print(sensplot_ftern)
 ggsave("plots/sensplot_ftern.png", plot = sensplot_ftern, width = 8, height = 6)
 
-# ---------------------------------------------------------------# 
-# lets see if the number of beds changes over time
-# Step 1: Drop hospitals with all missing bed values
-hosp_beds_clean <- hosp_data %>%
-  group_by(MCRNUM) %>%
-  filter(!all(is.na(beds))) %>%  # keep hospitals with at least one non-missing bed value
-  ungroup()
+# honest DiD for FTELPN --------------------------------------------#
+twfe_ftelpn <- fixest::feols(FTELPN ~ i(YEAR, treatment, ref = 2011) | MCRNUM + YEAR,
+                        cluster = "MCRNUM",
+                        data = hosp_data)
+summary(twfe_ftelpn)
 
-# Filter out hospitals with absurdly large bed counts
-hosp_beds_clean <- hosp_beds_clean %>%
-  filter(beds <= 100000)  # You can adjust this threshold as needed
+#save results from original did 
+betahat1 <- summary(twfe_ftelpn)$coefficients #save the coefficients
+sigma1 <- summary(twfe_ftelpn)$cov.scaled #save the covariance matrix
+names(betahat)
 
 
-# Step 2: Compute min and max beds per hospital
-bed_change_summary <- hosp_beds_clean %>%
-  group_by(MCRNUM, treatment) %>%
-  summarise(
-    min_beds = min(beds, na.rm = TRUE),
-    max_beds = max(beds, na.rm = TRUE),
-    bed_change = max_beds - min_beds,
-    .groups = "drop"
+delta_rm_ftelpn <-
+HonestDiD::createSensitivityResults_relativeMagnitudes(
+                                    betahat = betahat1, #coefficients
+                                    sigma = sigma1, #covariance matrix
+                                    numPrePeriods = 2, #num. of pre-treatment coefs
+                                    numPostPeriods = 5, #num. of post-treatment coefs
+                                    Mbarvec = seq(0.5,2,by=0.5) #values of Mbar
+                                    )
+
+delta_rm_ftelpn
+
+# original results
+originalResults <- HonestDiD::constructOriginalCS(betahat = betahat1,
+                                                  sigma = sigma1,
+                                                  numPrePeriods = 2,
+                                                  numPostPeriods = 5)
+
+# plot the sensitivity results
+sensplot_ftelpn<- HonestDiD::createSensitivityPlot_relativeMagnitudes(delta_rm_ftelpn, originalResults)
+
+sensplot_ftelpn <- sensplot_ftelpn +
+  labs(
+    title = "Sensitivity Analysis for FTELPN",
+    subtitle = "Honest DiD: Relative Magnitude Method",
+    x = "Mbar",
+    y = "CI for Treatment Effect"
   )
-View(bed_change_summary)
-
-#check outliers!!! 
-hosp_data %>%
-  filter(MCRNUM == "312018") %>%
-  select(YEAR, MCRNUM, FTERN, FTELPN, beds, hrrp_payment) %>%
-  arrange(YEAR)
-
-# Step 3: Average bed change by treatment group
-bed_change_by_group <- bed_change_summary %>%
-  mutate(group = ifelse(treatment == 1, "Treated", "Control")) %>%
-  group_by(group) %>%
-  summarise(
-    avg_bed_change = mean(bed_change, na.rm = TRUE),
-    median_bed_change = median(bed_change, na.rm = TRUE),
-    sd_bed_change = sd(bed_change, na.rm = TRUE),
-    n = n()
-  )
-
-bed_change_by_group
-
+print(sensplot_ftelpn)
