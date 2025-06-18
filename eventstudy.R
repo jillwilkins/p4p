@@ -1,9 +1,9 @@
-library(ggplot2)
 library(fixest)
 
 # from hosp_data, assign treatment and control group  
 # treatment group when first penalized == 2012
-hosp_data <- hosp_data %>%
+
+hosp_data <- hosp_data_clean %>%
   mutate(treatment = ifelse(first_penalty == "2012", 1, 0)) 
 
 # control group when hospitals are either never penalized or first penalized after 2016 
@@ -28,6 +28,11 @@ hosp_data <- hosp_data %>%
 hosp_data <- hosp_data %>%
   mutate(event_time = YEAR - 2012)
 
+hosp_data <- hosp_data %>%
+  mutate(
+    event_adj = if_else(first_penalty == "2013", 0, event_time)
+  )
+
 event_ftern <- feols(
   FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
   data = hosp_data,
@@ -36,9 +41,38 @@ event_ftern <- feols(
 summary(event_ftern)
 iplot(event_ftern,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent RN and 2012 Penalties")
+      main = "Event Study: Full Time Equivalent RN and 2012/3 Penalties")
 
 ggsave("plots/event_ftern.png")
+
+# plot over time, by treatment group FTERNs
+# Calculate mean FTERN by year and treatment group
+hosp_data <- hosp_data %>%
+  mutate(ftern_beds = FTERN / beds) 
+
+ftern_trend <- hosp_data %>%
+  group_by(YEAR, treatment) %>%
+  summarise(mean_FTERN = mean(ftern_beds, na.rm = TRUE), .groups = "drop")
+
+# Plot
+ggplot(ftern_trend, aes(x = YEAR, y = mean_FTERN, color = factor(treatment))) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    x = "Year",
+    y = "Mean FTERN",
+    color = "Treatment Group",
+    title = "Mean Full-Time Equivalent RNs per bed Over Time by Treatment Group"
+  ) +
+  scale_color_manual(labels = c("Control", "Treated"), values = c("#1f77b4", "#ff7f0e")) +
+  theme_light() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    legend.position = "top"
+  )
+
+# Save the plot
+ggsave("plots/ftern_trend_by_group.png", width = 7, height = 5)
 
 # differenece in difference regression 
 # TWFE
@@ -50,14 +84,14 @@ summary(did_ftern)
 
 # FTELPN 
 # check for parallel trends
-event_lpn <- feols(
+event_ftelpn <- feols(
   FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
   data = hosp_data,
   cluster = ~MCRNUM
 )
-summary(event_lpn)
+summary(event_ftelpn)
 
-iplot(event_lpn,
+iplot(event_ftelpn,
       xlab = "Event Time",
       main = "Event Study: Full Time Equivalent LPNs and 2012 Penalties")
 
@@ -93,16 +127,10 @@ library(ggplot2)
 library(fixest)
 library(HonestDiD)
 
-twfe_results <- fixest::feols(FTERN ~ i(YEAR, treatment, ref = 2011) | MCRNUM + YEAR,
-                        cluster = "MCRNUM",
-                        data = hosp_data)
-summary(twfe_results)
-
 #save results from original did 
-betahat <- summary(twfe_results)$coefficients #save the coefficients
-sigma <- summary(twfe_results)$cov.scaled #save the covariance matrix
+betahat <- summary(event_ftern)$coefficients #save the coefficients
+sigma <- summary(event_ftern)$cov.scaled #save the covariance matrix
 names(betahat)
-
 
 delta_rm_results <-
 HonestDiD::createSensitivityResults_relativeMagnitudes(
@@ -136,15 +164,9 @@ print(sensplot_ftern)
 ggsave("plots/sensplot_ftern.png", plot = sensplot_ftern, width = 8, height = 6)
 
 # honest DiD for FTELPN --------------------------------------------#
-twfe_ftelpn <- fixest::feols(FTELPN ~ i(YEAR, treatment, ref = 2011) | MCRNUM + YEAR,
-                        cluster = "MCRNUM",
-                        data = hosp_data)
-summary(twfe_ftelpn)
-
 #save results from original did 
-betahat1 <- summary(twfe_ftelpn)$coefficients #save the coefficients
-sigma1 <- summary(twfe_ftelpn)$cov.scaled #save the covariance matrix
-names(betahat)
+betahat1 <- summary(event_ftelpn)$coefficients #save the coefficients
+sigma1 <- summary(event_ftelpn)$cov.scaled #save the covariance matrix
 
 
 delta_rm_ftelpn <-
@@ -175,3 +197,4 @@ sensplot_ftelpn <- sensplot_ftelpn +
     y = "CI for Treatment Effect"
   )
 print(sensplot_ftelpn)
+ggsave("plots/sensplot_ftelpn.png", plot = sensplot_ftelpn, width = 8, height = 6)
