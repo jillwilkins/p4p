@@ -13,12 +13,12 @@ hcris <- hcris %>%
   mutate(provider_number = as.character(provider_number))
 
 #merge with hcris penalty data
-hosp_data <- aha %>%
+hosp_full <- aha %>%
   left_join(hcris %>% select(provider_number, year, beds, hrrp_payment, hvbp_payment), 
             by = c("YEAR" = "year", "MCRNUM" = "provider_number"))
 
 # create year a hospital was first penalized hrrp 
-hosp_data <- hosp_data %>%
+hosp_full <- hosp_full %>%
     group_by(MCRNUM) %>%
     mutate(first_penalty = case_when(
       all(is.na(hrrp_payment)) ~ "none",  # case where all values are NA
@@ -32,11 +32,21 @@ hosp_data <- hosp_data %>%
     ungroup()
 
 #see what years hospitals were first penalized
-hosp_data %>%
+hosp_full %>%
   group_by(first_penalty) %>%
   summarise(num_obs = n()) %>%
   arrange(desc(num_obs))  
 
+hosp_full %>%
+  group_by(first_penalty) %>%
+  summarise(num_hospitals = n_distinct(MCRNUM)) %>%
+  arrange(desc(num_hospitals))
+
+# take out hospital types not relevant for HRRP 
+# only keep SERV = 10 
+hosp_data <- hosp_full %>% filter(SERV == 10)
+
+# see what years hospitals were first penalized
 hosp_data %>%
   group_by(first_penalty) %>%
   summarise(num_hospitals = n_distinct(MCRNUM)) %>%

@@ -1,0 +1,42 @@
+# from hosp_data, assign treatment and control group  
+# treatment group when first penalized == 2012
+
+hosp_2013 <- hosp_data_clean %>%
+  mutate(treatment = ifelse(first_penalty == "2013", 1, 0)) 
+
+# control group when hospitals are either never penalized or first penalized after 2016 
+hosp_2013 <- hosp_2013 %>%
+  mutate(control = ifelse(first_penalty == "none" | first_penalty > 2016, 1, 0))
+
+# filter out hospitals that are not in treatment or control group
+hosp_2013 <- hosp_2013 %>% filter(treatment == 1 | control == 1)
+
+# filter relevant years
+hosp_2013 <- hosp_2013 %>% filter(YEAR <= 2016 & YEAR > 2008) 
+
+# Create a treatment-time interaction variable for DiD
+hosp_2013 <- hosp_2013 %>%
+  mutate(post = ifelse(YEAR >= 2013, 1, 0),  
+         did = treatment * post)
+
+#see sums script for counts by group
+
+# FTERN 
+# check for parallel trends
+hosp_2013 <- hosp_2013 %>%
+  mutate(event_time = YEAR - 2013)
+
+event_ftern13 <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR + BDTOT,
+  data = hosp_2013,
+  cluster = ~MCRNUM
+  )
+summary(event_ftern13)
+iplot(event_ftern13,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent RN and 2013 Penalties")
+
+event_2013 <- coefplot(event_ftern13)
+png("plots/event_ftern2013.png", width = 800, height = 600)
+
+
