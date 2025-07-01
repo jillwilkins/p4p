@@ -14,7 +14,7 @@ hcris <- hcris %>%
 
 #merge with hcris penalty data
 hosp_full <- aha %>%
-  left_join(hcris %>% select(provider_number, year, beds, hrrp_payment, hvbp_payment), 
+  left_join(hcris %>% select(provider_number, year, beds, hrrp_payment, hvbp_payment, tot_operating_exp, net_pat_rev), 
             by = c("YEAR" = "year", "MCRNUM" = "provider_number"))
 
 # create year a hospital was first penalized hrrp 
@@ -46,8 +46,14 @@ hosp_full %>%
 # only keep SERV = 10 
 hosp_data <- hosp_full %>% filter(SERV == 10)
 
-# see what years hospitals were first penalized
+# investigate sample 
 hosp_data %>%
-  group_by(first_penalty) %>%
-  summarise(num_hospitals = n_distinct(MCRNUM)) %>%
-  arrange(desc(num_hospitals))
+  summarise(
+    min_ftern = min(FTERN, na.rm = TRUE),
+    q25_ftern = quantile(FTERN, 0.25, na.rm = TRUE),
+    median_ftern = median(FTERN, na.rm = TRUE),
+    mean_ftern = mean(FTERN, na.rm = TRUE),
+    q75_ftern = quantile(FTERN, 0.75, na.rm = TRUE),
+    max_ftern = max(FTERN, na.rm = TRUE)
+  )
+

@@ -3,7 +3,7 @@ library(fixest)
 # from hosp_data, assign treatment and control group  
 # treatment group when first penalized == 2012
 
-hosp_2012 <- hosp_data_clean %>%
+hosp_2012 <- hosp_data %>%
   mutate(treatment = ifelse(first_penalty == "2012", 1, 0)) 
 
 # control group when hospitals are either never penalized or first penalized after 2016 
@@ -21,7 +21,19 @@ hosp_2012 <- hosp_2012 %>%
   mutate(post = ifelse(YEAR >= 2012, 1, 0),  
          did = treatment * post)
 
-#see sums script for counts by group
+#summary statistics for treatment and control groups
+sum_vars <- c("BDTOT", "FTERN", "FTELPN", "ADMTOT", "tot_operating_exp", "net_pat_rev")
+
+# mean and standard deviation for each variable by treatment group
+summary_stats <- hosp_2012 %>%
+  group_by(treatment) %>%
+  summarise(across(all_of(sum_vars),
+                   list(mean = ~mean(.x, na.rm = TRUE),
+                        sd = ~sd(.x, na.rm = TRUE)),
+                   .names = "{.col}_{.fn}"))
+
+print(summary_stats)
+
 
 # FTERN 
 # check for parallel trends
@@ -29,61 +41,133 @@ hosp_2012 <- hosp_2012 %>%
   mutate(event_time = YEAR - 2012)
 
 event_ftern <- feols(
-  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR + BDTOT,
-  data = hosp_2012,
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30),
   cluster = ~MCRNUM
-  )
+)
 summary(event_ftern)
-event_plot <- iplot(event_ftern,
+iplot(event_ftern,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent RN and 2012 Penalties")
+      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (beds 30-1000)"
+)
 
-event_plot 
+did_ftern_full <- feols(
+  FTERN ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012
+)
+did_ftern_mid <- feols(
+  FTERN ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30)
+)
+summary(did_ftern_mid)
 
-#----------------------------------------------------------------#
-# plot over time, by treatment group FTERNs
-# Calculate mean FTERN by year and treatment group
-hosp_2012 <- hosp_2012 %>%
-  mutate(ftern_beds = FTERN / BDTOT) 
-
-ftern_trend <- hosp_2012 %>%
-  group_by(YEAR, treatment) %>%
-  summarise(mean_FTERN = mean(ftern_beds, na.rm = TRUE), .groups = "drop")
-
-# Plot
-library(ggplot2)
-ggplot(ftern_trend, aes(x = YEAR, y = mean_FTERN, color = factor(treatment))) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2) +
-  labs(
-    x = "Year",
-    y = "Mean FTERN",
-    color = "Treatment Group",
-    title = "Mean Full-Time Equivalent RNs per bed Over Time by Treatment Group"
-  ) +
-  scale_color_manual(labels = c("Control", "Treated"), values = c("#1f77b4", "#ff7f0e")) +
-  theme_light() +
-  theme(
-    plot.title = element_text(hjust = 0.5),
-    legend.position = "top"
-  )
-
-# Save the plot
-ggsave("plots/ftern_trend_by_group.png", width = 7, height = 5)
-
-# differenece in difference regression 
-# TWFE
+did_ftern_2 <- feols(
+  FTERN ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+)
+summary(did_ftern_2)
 did_ftern <- feols(
   FTERN ~ did + post + treatment | MCRNUM + YEAR, 
-  data = hosp_data
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 1000)
 )
 summary(did_ftern)
+
+
+# BEDS
+event_beds <- feols(
+  BDTOT ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  cluster = ~MCRNUM
+)
+summary(event_beds)
+iplot(event_beds,
+      xlab = "Event Time",
+      main = "Event Study: Total Beds and 2012 Penalties (beds 30-2000)"
+)
+
+did_beds <- feols(
+  BDTOT ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012
+)
+summary(did_beds)
+
+# ADMISSIONS (ADMTOT)
+event_admtot <- feols(
+  ADMTOT ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  cluster = ~MCRNUM
+)
+summary(event_admtot)
+iplot(event_admtot,
+      xlab = "Event Time",
+      main = "Event Study: Total Admissions and 2012 Penalties (beds 30-2000)"
+)
+
+did_admtot <- feols(
+  ADMTOT ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+)
+summary(did_admtot)
+# PAYTOT 
+event_paytot <- feols(
+  PAYTOT ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR + BDTOT,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  cluster = ~MCRNUM
+)
+summary(event_paytot)
+
+iplot(event_paytot,
+      xlab = "Event Time",
+      main = "Event Study: Total Patient Revenue and 2012 Penalties (beds 30-2000)"
+)
+
+did_paytot <- feols(
+  PAYTOT ~ did + post + treatment | MCRNUM + YEAR + BDTOT, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+)
+summary(did_paytot)
+
+# PHYSICIAN (FTEMD)
+event_ftemd <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25),
+  cluster = ~MCRNUM
+)
+summary(event_ftemd)
+iplot(event_ftemd,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent MDs and 2012 Penalties (beds 30-2000)"
+)
+
+did_ftemd <- feols(
+  FTEMD ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25)
+)
+summary(did_ftemd)
+
+# RESIDENTS/INTERNS (FTERES)
+event_fteres <- feols(
+  FTERES ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  cluster = ~MCRNUM
+)
+summary(event_fteres)
+iplot(event_fteres,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent Residents/Interns and 2012 Penalties (beds 30-2000)"
+)
+
+did_fteres <- feols(
+  FTERES ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+)
+summary(did_fteres)
 
 # FTELPN 
 # check for parallel trends
 event_ftelpn <- feols(
   FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_data,
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000),
   cluster = ~MCRNUM
 )
 summary(event_ftelpn)
@@ -92,106 +176,16 @@ iplot(event_ftelpn,
       xlab = "Event Time",
       main = "Event Study: Full Time Equivalent LPNs and 2012 Penalties")
 
-ggsave("plots/event_ftelpn.png")
-
-# diff in diff regression
-# TWFE 
 did_ftelpn <- feols(
-  FTELPN ~ did + post + treatment | MCRNUM + YEAR,  
-  data = hosp_data
+  FTELPN ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
 )
 summary(did_ftelpn)
 
+# TREATMENT (how muuch does x variable predict treatment)
+did_treatment <- feols(
+  treatment ~ tot_operating_exp | MCRNUM + YEAR, 
+  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+)
+summary(did_treatment)
 
-# Honest DID --------------------------------------------#
-## Installation
-# Install remotes package if not installed
-install.packages("remotes")
-
-# Turn off warning-error-conversion, because the tiniest warning stops installation
-Sys.setenv("R_REMOTES_NO_ERRORS_FROM_WARNINGS" = "true")
-
-# install from github
-remotes::install_github("asheshrambachan/HonestDiD")
-
-#Install here, dplyr, did, haven, ggplot2, fixest packages from CRAN if not yet installed
-install.packages(c("here", "dplyr", "did", "haven", "ggplot2", "fixest"))
-library(here)
-library(dplyr)
-library(did)
-library(haven)
-library(ggplot2)
-library(fixest)
-library(HonestDiD)
-
-#save results from original did 
-betahat <- summary(event_ftern)$coefficients #save the coefficients
-sigma <- summary(event_ftern)$cov.scaled #save the covariance matrix
-names(betahat)
-
-delta_rm_results <-
-HonestDiD::createSensitivityResults_relativeMagnitudes(
-                                    betahat = betahat, #coefficients
-                                    sigma = sigma, #covariance matrix
-                                    numPrePeriods = 2, #num. of pre-treatment coefs
-                                    numPostPeriods = 5, #num. of post-treatment coefs
-                                    Mbarvec = seq(0.5,2,by=0.5) #values of Mbar
-                                    )
-
-delta_rm_results
-
-# original results
-originalResults <- HonestDiD::constructOriginalCS(betahat = betahat,
-                                                  sigma = sigma,
-                                                  numPrePeriods = 2,
-                                                  numPostPeriods = 5)
-
-
-# plot the sensitivity results
-sensplot_ftern<- HonestDiD::createSensitivityPlot_relativeMagnitudes(delta_rm_results, originalResults)
-
-sensplot_ftern <- sensplot_ftern +
-  labs(
-    title = "Sensitivity Analysis for FTERN",
-    subtitle = "Honest DiD: Relative Magnitude Method",
-    x = "Mbar",
-    y = "CI for Treatment Effect"
-  )
-print(sensplot_ftern)
-ggsave("plots/sensplot_ftern.png", plot = sensplot_ftern, width = 8, height = 6)
-
-# honest DiD for FTELPN --------------------------------------------#
-#save results from original did 
-betahat1 <- summary(event_ftelpn)$coefficients #save the coefficients
-sigma1 <- summary(event_ftelpn)$cov.scaled #save the covariance matrix
-
-
-delta_rm_ftelpn <-
-HonestDiD::createSensitivityResults_relativeMagnitudes(
-                                    betahat = betahat1, #coefficients
-                                    sigma = sigma1, #covariance matrix
-                                    numPrePeriods = 2, #num. of pre-treatment coefs
-                                    numPostPeriods = 5, #num. of post-treatment coefs
-                                    Mbarvec = seq(0.5,2,by=0.5) #values of Mbar
-                                    )
-
-delta_rm_ftelpn
-
-# original results
-originalResults <- HonestDiD::constructOriginalCS(betahat = betahat1,
-                                                  sigma = sigma1,
-                                                  numPrePeriods = 2,
-                                                  numPostPeriods = 5)
-
-# plot the sensitivity results
-sensplot_ftelpn<- HonestDiD::createSensitivityPlot_relativeMagnitudes(delta_rm_ftelpn, originalResults)
-
-sensplot_ftelpn <- sensplot_ftelpn +
-  labs(
-    title = "Sensitivity Analysis for FTELPN",
-    subtitle = "Honest DiD: Relative Magnitude Method",
-    x = "Mbar",
-    y = "CI for Treatment Effect"
-  )
-print(sensplot_ftelpn)
-ggsave("plots/sensplot_ftelpn.png", plot = sensplot_ftelpn, width = 8, height = 6)
