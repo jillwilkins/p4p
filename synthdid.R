@@ -3,8 +3,8 @@ library(tidyr)
 library(synthdid)
 
 # 1. Summarize (if needed) and remove duplicates
-sdid_data <- hosp_2012 %>%
-  filter(!is.na(MCRNUM), treatment %in% c(0, 1), BDTOT >= 30, BDTOT <= 2000) %>%
+sdid_data <- hosp_filter %>%
+  filter(!is.na(MCRNUM), treatment %in% c(0, 1)) %>%
   select(MCRNUM, YEAR, treatment, FTERN, FTEMD, FTELPN) %>%
   drop_na(FTERN) %>%
   drop_na(FTEMD) %>%
@@ -42,6 +42,7 @@ estimate_sdid <- function(data, outcome_var, pre_year = 2012) {
 tau_ftern <- estimate_sdid(sdid_data, "FTERN")
 tau_ftemd <- estimate_sdid(sdid_data, "FTEMD")
 tau_ftelpn <- estimate_sdid(sdid_data, "FTELPN")
+
 
 print(tau_ftern)
 print(tau_ftemd)
