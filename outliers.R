@@ -1,22 +1,8 @@
 # this script is used to analyze outliers
 library(ggplot2)
 
-#histogram of ftern
-hist_ftern <- ggplot(hosp_data, aes(x = FTERN)) +
-  geom_histogram(bins = 100) +
-  scale_x_continuous(limits = c(0, 1000)) +
-  theme_minimal()
-ggsave("plots/histogram_ftern.png")
-
-# full skew histogram
-ggplot(hosp_data, aes(x = FTERN)) +
-  geom_histogram(bins = 100) +
-  scale_x_continuous(limits = c(0, 2000)) +
-  theme_minimal()
-ggsave("plots/hist_skew_ftern.png")
-
-# colored hist FTERN 
-hist <- ggplot(hosp_2012, aes(x = FTERN, fill = factor(treatment))) +
+#colored hist for FULL bed FTERN
+hist_full <- ggplot(hosp_2012, aes(x = FTERN, fill = factor(treatment))) +
   geom_histogram(bins = 100, position = "identity", alpha = 0.5) +
   scale_x_continuous(limits = c(0, 2000)) +
   scale_fill_manual(values = c("0" = "#1f77b4", "1" = "#ff7f0e"),
@@ -31,10 +17,30 @@ hist <- ggplot(hosp_2012, aes(x = FTERN, fill = factor(treatment))) +
   labs(x = "Number of FTERN", y = "Count",
        title = "Distribution of FTERN by Treatment Group")
 
-ggsave("plots/hist_group_ftern.png" , plot = hist)
 
-# colored hist FTEMD
-hist_md <- ggplot(hosp_2012, aes(x = FTEMD, fill = factor(treatment))) +
+ggsave("plots/hist_group_ftern_full.png" , plot = hist_full)
+
+# colored hist FTERN 
+hist <- ggplot(hosp_filter, aes(x = FTERN, fill = factor(treatment))) +
+  geom_histogram(bins = 100, position = "identity", alpha = 0.5) +
+  scale_x_continuous(limits = c(0, 2000)) +
+  scale_fill_manual(values = c("0" = "#1f77b4", "1" = "#ff7f0e"),
+                    name = "Group",
+                    labels = c("Control", "Treatment")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  labs(x = "Number of FTERN", y = "Count",
+       title = "Distribution of FTERN by Treatment Group")
+print(hist)
+
+ggsave("plots/hist_group_ftern_filter.png" , plot = hist)
+
+# colored hist FTEMD full bed 
+hist_full_md <- ggplot(hosp_2012, aes(x = FTEMD, fill = factor(treatment))) +
   geom_histogram(bins = 100, position = "identity", alpha = 0.5) +
   scale_x_continuous(limits = c(0, 2000)) +
   coord_cartesian(ylim = c(0, 1000)) +
@@ -50,11 +56,31 @@ hist_md <- ggplot(hosp_2012, aes(x = FTEMD, fill = factor(treatment))) +
   labs(x = "Number of FTEMD", y = "Count",
        title = "Distribution of FTEMD by Treatment Group")
 
-ggsave("plots/hist_group_ftemd.png" , plot = hist_md)
+
+ggsave("plots/hist_group_ftemd_full.png" , plot = hist_full_md)
+
+# colored hist FTEMD
+hist_md <- ggplot(hosp_filter, aes(x = FTEMD, fill = factor(treatment))) +
+  geom_histogram(bins = 100, position = "identity", alpha = 0.5) +
+  scale_x_continuous(limits = c(0, 2000)) +
+  coord_cartesian(ylim = c(0, 1000)) +
+  scale_fill_manual(values = c("0" = "#1f77b4", "1" = "#ff7f0e"),
+                    name = "Group",
+                    labels = c("Control", "Treatment")) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5),
+    plot.background = element_rect(fill = "white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA)
+  ) +
+  labs(x = "Number of FTEMD", y = "Count",
+       title = "Distribution of FTEMD by Treatment Group")
+
+ggsave("plots/hist_group_ftemd_filter.png" , plot = hist_md)
 
 # hospital level colored hist 
 # Step 1: Aggregate to the hospital level
-hosp_level <- hosp_data %>%
+hosp_level <- hosp_filter %>%
   group_by(MCRNUM, treatment) %>%
   summarise(avg_FTERN = mean(FTERN, na.rm = TRUE), .groups = "drop")
 
@@ -70,16 +96,30 @@ ggplot(hosp_level, aes(x = avg_FTERN, fill = factor(treatment))) +
        y = "Number of Hospitals",
        title = "Distribution of Hospital-Level FTERN by Group")
 
-hosp_2012 %>% filter(ADMTOT >= 25 & BDTOT >= 30 & BDTOT <= 2000) %>%
+
+# count the number of hospital/year pairs that have FTEMD = 0
+zero_ftemd_count <- hosp_2012 %>%
+  filter(FTEMD == 0, ADMTOT >= 25, BDTOT >= 30, BDTOT <= 2000) %>%
+  group_by(MCRNUM, YEAR) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  summarise(total_zero_ftemd = sum(count))
+print(zero_ftemd_count)
+
+hosp_filter %>% # filter() %>%
   group_by(treatment, YEAR) %>%
   summarise(
-    min_var = min(ADMTOT, na.rm = TRUE),
-    q25_var = quantile(ADMTOT, 0.25, na.rm = TRUE),
-    median_var = median(ADMTOT, na.rm = TRUE),
-    mean_var = mean(ADMTOT, na.rm = TRUE),
-    q75_var = quantile(ADMTOT, 0.75, na.rm = TRUE),
-    max_var = max(ADMTOT, na.rm = TRUE)
+    min_var = min(FTEMD, na.rm = TRUE),
+    q25_var = quantile(FTEMD, 0.25, na.rm = TRUE),
+    median_var = median(FTEMD, na.rm = TRUE),
+    mean_var = mean(FTEMD, na.rm = TRUE),
+    q75_var = quantile(FTEMD, 0.75, na.rm = TRUE),
+    max_var = max(FTEMD, na.rm = TRUE)
   )
+
+# Count the number of hospitals with FTEMD > 2000
+hosp_filter %>%
+  filter(FTEMD > 2000) %>%
+  summarise(num_hospitals = n_distinct(MCRNUM))
 
 # how many hospitals in each range?
 hosp_2012 %>%

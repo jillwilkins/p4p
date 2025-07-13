@@ -125,4 +125,4 @@ sensplot_ftemd <- sensplot_ftemd +
     y = "CI for Treatment Effect"
   )
 print(sensplot_ftemd)
-ggsave("plots/sensplot_ftelmd.png", plot = sensplot_ftemd, width = 8, height = 6)
+ggsave("plots/sensplot_ftemd.png", plot = sensplot_ftemd, width = 8, height = 6)

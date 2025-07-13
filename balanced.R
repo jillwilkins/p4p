@@ -37,6 +37,34 @@ hosp_data_combined <- bind_rows(bed_all, bed_30, bed_2000, bed_1000)
 
 # Summary Statistics
 
+# COUNTS
+# Create a helper function to count unique hospitals by treatment group
+count_by_group <- function(data, ids, group_name) {
+  data %>%
+    filter(MCRNUM %in% ids) %>%
+    distinct(MCRNUM, treatment) %>%
+    count(treatment, name = "num_hospitals") %>%
+    mutate(group = group_name)
+}
+
+# Run the counts for each group
+count_all   <- count_by_group(hosp_2012, hosp_all_ids,   "Full Sample")
+count_30    <- count_by_group(hosp_2012, hosp_30_ids,    "BDTOT >= 30")
+count_2000  <- count_by_group(hosp_2012, hosp_2000_ids,  "30 <= BDTOT <= 2000")
+count_1000  <- count_by_group(hosp_2012, hosp_1000_ids,  "30 <= BDTOT <= 1000")
+
+# Combine all into one summary table
+summary_counts <- bind_rows(count_all, count_30, count_2000, count_1000) %>%
+  mutate(treatment = ifelse(treatment == 1, "Treatment", "Control")) %>%
+  pivot_wider(names_from = treatment, values_from = num_hospitals)
+
+# View the summary table
+print(summary_counts)
+kable(summary_counts, format = "latex", booktabs = TRUE,
+      caption = "Number of Hospitals per Group",
+      align = "lcc")
+
+# SUMMARY TABLE 
 # Define the summary function
 # Step 1: Define the summary function
 summarize_group_stats <- function(data) {
@@ -96,6 +124,8 @@ kable(summary_1000, format = "latex", booktabs = TRUE,
       caption = "Summary Statistics for Hospitals with 30 <= BDTOT <= 1000",
       align = "lcc")
 
+
+# --------------------------------------------------------#
 # Plot demeaned FTERN trends
 # demean for ftern  
 demean_ftern <- hosp_data_combined %>%

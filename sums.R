@@ -3,8 +3,8 @@ library(knitr)
 library(tidyr)
 
 #Counts by group
-obs_main <- hosp_data %>%
-  filter(treatment %in% c(0, 1)) %>%
+obs_main <- hosp_2012 %>%
+  filter(treatment %in% c(0, 1), BDTOT >= 300 & BDTOT <= 1500) %>%
   group_by(treatment) %>%
   summarise(
     total_obs = n(),
@@ -12,6 +12,8 @@ obs_main <- hosp_data %>%
     .groups = "drop"
   )
 
+
+print(obs_main)
 #-----------------------------------------------------------#
 # Define variables to summarize
 sum_vars <- c("BDTOT", "FTERN", "FTELPN", "FTEMD", "FTERES","ADMTOT", "tot_operating_exp", "net_pat_rev")
@@ -167,3 +169,4 @@ ggplot(trend_data, aes(x = YEAR, y = demeaned_ftern, color = factor(treatment)))
   theme_minimal() +
   labs(title = "Change in FTERN Over Time (Demeaned)",
        x = "Year", y = "Demeaned Average FTERN")
+

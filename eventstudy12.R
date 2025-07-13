@@ -35,21 +35,61 @@ summary_stats <- hosp_2012 %>%
 print(summary_stats)
 
 
+#-----------------------------------------------------------#
+# i will create a balanced panel for analysis as well 
+# BALANCING 
+# Identify hospitals that ever meet the inclusion criteria
+included_hospitals <- hosp_2012 %>%
+  filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25 & FTEMD > 0) %>%
+  pull(MCRNUM) %>%
+  unique()
+
+# Keep all rows for those hospitals
+hosp_filter <- hosp_2012 %>%
+  filter(MCRNUM %in% included_hospitals)
+
 # FTERN 
 # check for parallel trends
 hosp_2012 <- hosp_2012 %>%
   mutate(event_time = YEAR - 2012)
 
+hosp_filter <- hosp_filter %>%
+  mutate(event_time = YEAR - 2012)
+
 event_ftern <- feols(
   FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_2012  %>% filter(BDTOT >= 30),
+  data = hosp_filter,  #%>% filter(BDTOT >= 30),
   cluster = ~MCRNUM
 )
 summary(event_ftern)
 iplot(event_ftern,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (beds 30-1000)"
+      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (hosp_filter)"
 )
+
+# FTERN per bed
+hosp_filter <- hosp_filter %>%
+  mutate(FTERN_per_bed = FTERN / BDTOT, 
+         FTEMD_per_bed = FTEMD / BDTOT,
+         FTELPN_per_bed = FTELPN / BDTOT,
+         FTERES_per_bed = FTERES / BDTOT)
+
+event_ftern_per_bed <- feols(
+  FTERN_per_bed ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_filter,
+  cluster = ~MCRNUM
+)
+summary(event_ftern_per_bed)
+iplot(event_ftern_per_bed,
+      xlab = "Event Time",
+      main = "Event Study: FTERN per Bed and 2012 Penalties (beds 30-2000)"
+)
+
+did_ftern_per_bed <- feols(
+  FTERN_per_bed ~ did + post + treatment | MCRNUM + YEAR, 
+  data = hosp_filter
+)
+summary(did_ftern_per_bed)
 
 did_ftern_full <- feols(
   FTERN ~ did + post + treatment | MCRNUM + YEAR, 
@@ -128,9 +168,20 @@ did_paytot <- feols(
 summary(did_paytot)
 
 # PHYSICIAN (FTEMD)
+event_ftemd_full <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25 & FTEMD > 0),
+  cluster = ~MCRNUM
+)
+summary(event_ftemd_full)
+iplot(event_ftemd_full,
+      xlab = "Event Time",
+      main = "Event Study: Full Time Equivalent MDs and 2012 Penalties (large)"
+)
+# Run model balanced panel
 event_ftemd <- feols(
   FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25),
+  data = hosp_filter,
   cluster = ~MCRNUM
 )
 summary(event_ftemd)
@@ -138,17 +189,15 @@ iplot(event_ftemd,
       xlab = "Event Time",
       main = "Event Study: Full Time Equivalent MDs and 2012 Penalties (beds 30-2000)"
 )
-
 did_ftemd <- feols(
   FTEMD ~ did + post + treatment | MCRNUM + YEAR, 
-  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25)
-)
+  data = hosp_filter)
 summary(did_ftemd)
 
 # RESIDENTS/INTERNS (FTERES)
 event_fteres <- feols(
   FTERES ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_2012  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  data = hosp_filter  %>% filter(BDTOT >= 30 & BDTOT <= 2000),
   cluster = ~MCRNUM
 )
 summary(event_fteres)
@@ -167,18 +216,18 @@ summary(did_fteres)
 # check for parallel trends
 event_ftelpn <- feols(
   FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000),
+  data = hosp_filter, #%>% filter(BDTOT >= 30 & BDTOT <= 2000),
   cluster = ~MCRNUM
 )
 summary(event_ftelpn)
 
 iplot(event_ftelpn,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent LPNs and 2012 Penalties")
+      main = "Event Study: Full Time Equivalent LPNs and 2012 Penalties (beds 30-2000)")
 
 did_ftelpn <- feols(
   FTELPN ~ did + post + treatment | MCRNUM + YEAR, 
-  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+  data = hosp_filter # %>% filter(BDTOT >= 30 & BDTOT <= 2000)
 )
 summary(did_ftelpn)
 
@@ -189,3 +238,18 @@ did_treatment <- feols(
 )
 summary(did_treatment)
 
+# Tables for LaTeX
+# Step 1: Extract coefficients and standard errors
+es_table_ftern_bed <- broom::tidy(event_ftern_per_bed, conf.int = FALSE) %>%
+  filter(grepl("event_time::", term)) %>%
+  mutate(
+    term = gsub("event_time::", "", term),
+    estimate_se = sprintf("%.2f (%.2f)", estimate, std.error)
+  ) %>%
+  select(term, estimate_se) %>%
+  rename(`Event Time` = term, `Estimate (SE)` = estimate_se)
+
+# Step 2: Create LaTeX table
+kable(es_table_ftern_bed, format = "latex", booktabs = TRUE,
+      caption = "Event Study Estimates: FTERN per Bed",
+      align = "lc")
