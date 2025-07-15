@@ -150,7 +150,7 @@ print(quad_ftern)
 ggsave("plots/quad_ftern.png", plot = quad_ftern, width = 10, height = 10, bg = "white")
 
 # Plot FTEMD trends (not demeaned)
-mean_ftemd <- hosp_data_combined %>% filter(FTEMD > 0) %>%
+mean_ftemd <- hosp_data_combined %>% #filter(FTEMD > 0) %>%
   group_by(bed_group, treatment, YEAR) %>%
   summarise(mean_ftemd = mean(FTEMD, na.rm = TRUE), .groups = "drop")
 
