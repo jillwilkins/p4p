@@ -34,19 +34,20 @@ summary_stats <- hosp_2012 %>%
 
 print(summary_stats)
 
-
 #-----------------------------------------------------------#
 # i will create a balanced panel for analysis as well 
 # BALANCING 
 # Identify hospitals that ever meet the inclusion criteria
-included_hospitals <- hosp_2012 %>%
-  filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25 & FTEMD > 0) %>%
-  pull(MCRNUM) %>%
-  unique()
-
+#included_hospitals <- hosp_2012 %>%
+#  filter(BDTOT >= 30 & BDTOT <= 2000 & ADMTOT >= 25 & FTEMD > 0) %>%
+#  pull(MCRNUM) %>%
+#  unique()
 # Keep all rows for those hospitals
-hosp_filter <- hosp_2012 %>%
-  filter(MCRNUM %in% included_hospitals)
+#hosp_filter <- hosp_2012 %>%
+#  filter(MCRNUM %in% included_hospitals)
+
+# bed_2000 is defined in balanced.R 
+hosp_filter <- bed_2000 
 
 # FTERN 
 # check for parallel trends
@@ -64,7 +65,7 @@ event_ftern <- feols(
 summary(event_ftern)
 iplot(event_ftern,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (hosp_filter)"
+      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (Beds 30-2000)"
 )
 
 # FTERN per bed
@@ -181,7 +182,7 @@ iplot(event_ftemd_full,
 # Run model balanced panel
 event_ftemd <- feols(
   FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = hosp_filter,
+  data = bed_2000,
   cluster = ~MCRNUM
 )
 summary(event_ftemd)
@@ -193,6 +194,14 @@ did_ftemd <- feols(
   FTEMD ~ did + post + treatment | MCRNUM + YEAR, 
   data = hosp_filter)
 summary(did_ftemd)
+
+# run on 30 - 1000 beds
+event_ftemd_1 <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = bed_1000,
+  cluster = ~MCRNUM
+)
+summary(event_ftemd_1)
 
 # RESIDENTS/INTERNS (FTERES)
 event_fteres <- feols(
@@ -208,9 +217,16 @@ iplot(event_fteres,
 
 did_fteres <- feols(
   FTERES ~ did + post + treatment | MCRNUM + YEAR, 
-  data = hosp_2012 %>% filter(BDTOT >= 30 & BDTOT <= 2000)
+  data = hosp_filter
 )
 summary(did_fteres)
+
+event_fteres_1 <- feols(
+  FTERES ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = bed_1000,
+  cluster = ~MCRNUM
+)
+summary(event_fteres_1)
 
 # FTELPN 
 # check for parallel trends

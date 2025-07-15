@@ -85,6 +85,16 @@ kable(reg_table, format = "latex", booktabs = TRUE, align = "lcc",
       caption = "TWFE Estimates", escape = FALSE)
 
 # -----------------------------------------------------------#
+# Means and SD for FTERN per bed 
+ftern_bed_sum <- hosp_filter %>% 
+  group_by(treatment) %>%
+  summarise(
+    mean_ftern_bed = mean(ftern_beds, na.rm = TRUE),
+    sd_ftern_bed = sd(ftern_beds, na.rm = TRUE),
+    .groups = "drop"    
+  )
+ftern_bed_sum 
+# -----------------------------------------------------------#
 # plots 
 # FTERN by year and treatment group
 hosp_2012 <- hosp_2012 %>%
