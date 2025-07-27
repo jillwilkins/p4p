@@ -105,15 +105,15 @@ zero_ftemd_count <- hosp_2012 %>%
   summarise(total_zero_ftemd = sum(count))
 print(zero_ftemd_count)
 
-hosp_filter %>% # filter() %>%
+hosp_2012 %>% # filter() %>%
   group_by(treatment, YEAR) %>%
   summarise(
-    min_var = min(FTEMD, na.rm = TRUE),
-    q25_var = quantile(FTEMD, 0.25, na.rm = TRUE),
-    median_var = median(FTEMD, na.rm = TRUE),
-    mean_var = mean(FTEMD, na.rm = TRUE),
-    q75_var = quantile(FTEMD, 0.75, na.rm = TRUE),
-    max_var = max(FTEMD, na.rm = TRUE)
+    min_var = min(BDTOT, na.rm = TRUE),
+    q25_var = quantile(BDTOT, 0.25, na.rm = TRUE),
+    median_var = median(BDTOT, na.rm = TRUE),
+    mean_var = mean(BDTOT, na.rm = TRUE),
+    q75_var = quantile(BDTOT, 0.75, na.rm = TRUE),
+    max_var = max(BDTOT, na.rm = TRUE)
   )
 
 # Count the number of hospitals with FTEMD > 2000
