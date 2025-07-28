@@ -1,0 +1,201 @@
+library(fixest)
+library(MatchIt)
+library(ggplot2)
+
+# treatment group when first penalized == 2012
+hosp_2012 <- hosp_data %>%
+  mutate(treatment = ifelse(first_penalty == "2012", 1, 0)) 
+
+# control group when hospitals are either never penalized or first penalized after 2016 
+hosp_2012 <- hosp_2012 %>%
+  mutate(control = ifelse(first_penalty == "none" | first_penalty > 2016, 1, 0))
+
+# filter out hospitals that are not in treatment or control group
+hosp_2012 <- hosp_2012 %>% filter(treatment == 1 | control == 1)
+
+# filter relevant years
+hosp_2012 <- hosp_2012 %>% filter(YEAR <= 2016 & YEAR >= 2008) 
+
+# Create a treatment-time interaction variable for DiD
+hosp_2012 <- hosp_2012 %>%
+  mutate(post = ifelse(YEAR >= 2012, 1, 0),  
+         did = treatment * post)
+
+# percentage change in beds 
+bed_change <- hosp_2012 %>%
+  filter(YEAR %in% c(2011, 2016)) %>%
+  group_by(MCRNUM, YEAR) %>%
+  summarise(BDTOT = mean(BDTOT, na.rm = TRUE), .groups = "drop") %>%  # collapse multiple rows per year
+  pivot_wider(
+    names_from = YEAR,
+    values_from = BDTOT,
+    names_prefix = "beds_"
+  ) %>%
+  mutate(bed_pct_change_11_16 = (beds_2016 - beds_2011) / beds_2011 * 100)
+
+# join back to main dataset 
+hosp_2012 <- hosp_2012 %>%
+  left_join(bed_change %>% select(MCRNUM, bed_pct_change_11_16), by = "MCRNUM")
+
+# Matching process
+# Calculate the 99th percentile cutoff for beds (levels and pct change)
+bed_cutoff <- hosp_2012 %>%
+  summarise(
+    bed_99th = quantile(BDTOT, 0.99, na.rm = TRUE),
+    bed_pct_change_99th = quantile(bed_pct_change_11_16, 0.99, na.rm = TRUE)
+  )
+
+# average BDTOT per hospital years 2008 - 2011 
+hosp_2012 <- hosp_2012 %>%
+  group_by(MCRNUM) %>%
+  mutate(bed_preavg = mean(BDTOT[YEAR >= 2008 & YEAR <= 2011], na.rm = TRUE)) %>%
+  ungroup()
+
+# filter hospitals that have ANY year with BDTOT above the 99th percentile
+hosp_2012 <- hosp_2012 %>%
+  group_by(MCRNUM) %>%
+  filter(all(
+    bed_preavg <= bed_cutoff$bed_99th,
+    BDTOT <= bed_cutoff$bed_99th,
+    bed_pct_change_11_16 <= bed_cutoff$bed_pct_change_99th,
+    BDTOT >= 30
+  )) %>%
+  ungroup()
+
+# match using nearest neighbor with caliper
+match_near <- matchit(
+  treatment ~ bed_preavg, #+ adm_preavg,
+  data = hosp_2012 %>% filter(!is.na(bed_preavg)), #& !is.na(adm_preavg)),
+  method = "nearest",
+  distance = "logit",
+  caliper = 0.1
+)      
+
+matched_df <- match.data(match_near)
+matched_mcrnums <- matched_df$MCRNUM
+panel_near <- hosp_2012 %>%
+  filter(MCRNUM %in% matched_df$MCRNUM) %>%
+  left_join(
+    matched_df %>% 
+      select(MCRNUM, weights) %>% 
+      distinct(MCRNUM, .keep_all = TRUE),
+    by = "MCRNUM"
+  ) %>%
+  mutate(event_time = YEAR - 2012)
+
+# number of unique hospitals in each treatment group
+unique_hospitals <- panel_near %>%
+  group_by(treatment) %>%
+  summarise(n_hospitals = n_distinct(MCRNUM), .groups = "drop")
+print(unique_hospitals)
+
+# averages per group in the matched sample
+average_outcomes <- panel_near %>%
+  group_by(treatment) %>%
+  summarise(
+    avg_BDTOT = mean(BDTOT, na.rm = TRUE),
+    avg_ADMTOT = mean(ADMTOT, na.rm = TRUE),
+    avg_FTEMD = mean(FTEMD, na.rm = TRUE),
+    avg_FTERN = mean(FTERN, na.rm = TRUE),
+    avg_FTELPN = mean(FTELPN, na.rm = TRUE),
+    avg_FTERES = mean(FTERES, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(average_outcomes)
+
+
+# EVENT STUDY ---------------------------------------------# 
+# FTERN 
+# manually place incorrect zeros that happen not in 2012 
+panel_near <- panel_near %>%
+  mutate(FTERN = if_else(MCRNUM == 310016 & YEAR == 2008, 303, FTERN),
+         FTERN = if_else(MCRNUM == 100173 & YEAR == 2010, 559, FTERN),
+         FTERN = if_else(MCRNUM == 260070 & YEAR == 2009, 70, FTERN),
+        FTERN = if_else(MCRNUM == 050511 & YEAR == 2010, 264.5, FTERN))
+
+# questionable entries 
+panel_near <- panel_near %>%
+  filter(MCRNUM != 050228 & MCRNUM != 400013)
+
+esmatch_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_near %>% filter (BDTOT >= 800),
+  cluster = ~MCRNUM,
+)
+summary(esmatch_ftern)
+png("800_FTERN.png", width = 800, height = 800)
+iplot(esmatch_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, 800+ beds)")
+dev.off()
+
+# count number of hospitals with beds in each group 
+n_hosp_30_200 <- panel_near %>%
+  filter(BDTOT >= 30 & BDTOT <= 200) %>%
+  summarise(n_hospitals = n_distinct(MCRNUM))
+print(n_hosp_30_200)
+
+n_hosp_200_500 <- panel_near %>%
+  filter(BDTOT >= 200 & BDTOT < 400) %>%
+  summarise(n_hospitals = n_distinct(MCRNUM))
+print(n_hosp_200_400)
+
+n_hosp_400_600 <- panel_near %>%
+  filter(BDTOT >= 400 & BDTOT < 600) %>%
+  summarise(n_hospitals = n_distinct(MCRNUM))
+print(n_hosp_400_600)
+
+n_hospitals_800 <- panel_near %>%
+  filter(BDTOT >= 800) %>%
+  summarise(n_hospitals = n_distinct(MCRNUM))
+print(n_hospitals_800)
+
+# FTERN per bed 
+panel_near <- panel_near %>%
+  mutate(FTERN_per_bed = FTERN / BDTOT)
+
+esmatch_ftern_bed <- feols(
+  FTERN_per_bed ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_near %>% filter (BDTOT > 800),
+  cluster = ~MCRNUM,
+)
+summary(esmatch_ftern_bed)
+
+# FTELPN 
+esmatch_ftelpn <- feols(
+  FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_near,
+  cluster = ~MCRNUM,
+)
+summary(esmatch_ftelpn)
+png("FTELPN_Event_Study_Matched.png", width = 800, height = 800)
+iplot(esmatch_ftelpn,
+      xlab = "Event Time",
+      main = "Event Study: FTELPN and 2012 Penalties (matched nearest)")
+dev.off()   
+
+# FTEMD 
+panel_positive_ftemd <- panel_near %>%
+  group_by(MCRNUM) %>%
+  filter(all(FTEMD > 0)) %>%
+  ungroup()
+
+esmatch_ftemd <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_positive_ftemd,
+  cluster = ~MCRNUM,
+)
+summary(esmatch_ftemd)
+png("FTEMD_Event_Study_Matched.png", width = 800, height = 800)
+iplot(esmatch_ftemd,
+      xlab = "Event Time",
+      main = "Event Study: FTEMD and 2012 Penalties (matched nearest)")
+dev.off()
+
+# FTERES
+esmatch_fteres <- feols(
+  FTERES ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_near,
+  cluster = ~MCRNUM,
+)
+summary(esmatch_fteres)

@@ -1,5 +1,7 @@
 # ---------------------------------------------------------------# 
-# calculate percentage change in beds per hospital 
+summary(hosp_2012$BDTOT)
+
+# calculate percentage change in beds per hospital from 2011 to 2016
 library(dplyr)
 library(tidyr)
 

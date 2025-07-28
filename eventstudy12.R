@@ -14,7 +14,7 @@ hosp_2012 <- hosp_2012 %>%
 hosp_2012 <- hosp_2012 %>% filter(treatment == 1 | control == 1)
 
 # filter relevant years
-hosp_2012 <- hosp_2012 %>% filter(YEAR <= 2016 & YEAR > 2008) 
+hosp_2012 <- hosp_2012 %>% filter(YEAR <= 2016 & YEAR >= 2008) 
 
 # Create a treatment-time interaction variable for DiD
 hosp_2012 <- hosp_2012 %>%
@@ -57,15 +57,15 @@ hosp_2012 <- hosp_2012 %>%
 hosp_filter <- hosp_filter %>%
   mutate(event_time = YEAR - 2012)
 
-event_ftern <- feols(
-  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+event_tccar <- feols(
+  TCCAR ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
   data = hosp_filter,  #%>% filter(BDTOT >= 30),
   cluster = ~MCRNUM
 )
-summary(event_ftern)
-iplot(event_ftern,
+summary(event_tccar)
+iplot(event_tccar,
       xlab = "Event Time",
-      main = "Event Study: Full Time Equivalent RN and 2012 Penalties (Beds 30-2000)"
+      main = "Event Study: tccar and 2012 Penalties (Beds 30-2000)"
 )
 
 # FTERN per bed

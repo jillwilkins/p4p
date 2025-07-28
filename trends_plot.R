@@ -16,7 +16,7 @@ plot_data <- bed_2000 %>% #filter (BDTOT >= 30 & BDTOT <= 2000 & FTEMD > 0) %>%
             .groups = "drop")
 
 # ftern per bed
-trend_ftern_bed <- ggplot(plot_data, aes(x = YEAR, y = avg_rn_bed, color = factor(treatment))) +
+trend_ftern_bed <- ggplot(panel_near, aes(x = YEAR, y = mean(FTERN_per_bed), color = factor(treatment))) +
   geom_line(size = 1.2) +
   geom_point(size = 2) +
   theme_minimal(base_size = 16) +  # increase overall font size
@@ -32,10 +32,10 @@ trend_ftern_bed <- ggplot(plot_data, aes(x = YEAR, y = avg_rn_bed, color = facto
   ) 
 
 print(trend_ftern_bed)
-ggsave("plots/trend_ftern_bed.png", plot = trend_ftern_bed, width = 8, height = 8, bg = "white")
+ggsave("new_trend_ftern_bed.png", plot = trend_ftern_bed, width = 8, height = 8, bg = "white")
 
 # ftern by group
-trend_ftern_group <- ggplot(bed_2000, aes(x = YEAR, y = FTERN, color = factor(treatment))) +
+trend_ftern_group <- ggplot(panel_near_fixed, aes(x = YEAR, y = FTERN, color = factor(treatment))) +
   geom_line(stat = "summary", fun = "mean", size = 1.2) +
   geom_point(stat = "summary", fun = "mean", size = 2) +
   theme_minimal(base_size = 16) +  # increase overall font size
@@ -53,7 +53,7 @@ print(trend_ftern_group)
 ggsave("plots/trend_ftern_group.png", plot = trend_ftern_group, width = 8, height = 8, bg = "white")
 
 #ftemd by group 
-trend_ftemd_group <- ggplot(bed_2000, aes(x = YEAR, y = FTEMD, color = factor(treatment))) +
+trend_ftemd_group <- ggplot(panel_positive_ftemd, aes(x = YEAR, y = FTEMD, color = factor(treatment))) +
   geom_line(stat = "summary", fun = "mean", size = 1.2) +
   geom_point(stat = "summary", fun = "mean", size = 2) +
   theme_minimal(base_size = 16) +  # increase overall font size
