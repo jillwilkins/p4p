@@ -1,6 +1,7 @@
 library(fixest)
 library(MatchIt)
 library(ggplot2)
+library(data.table)
 
 # treatment group when first penalized == 2012
 hosp_2012 <- hosp_data %>%
@@ -32,6 +33,19 @@ bed_change <- hosp_2012 %>%
     names_prefix = "beds_"
   ) %>%
   mutate(bed_pct_change_11_16 = (beds_2016 - beds_2011) / beds_2011 * 100)
+
+# percentage change in ftern
+ftern_change <- hosp_2012 %>%
+  filter(YEAR %in% c(2008, 2010, 2012, 2014, 2016)) %>%
+  group_by(MCRNUM, YEAR) %>%
+  summarise(FTERN = mean(FTERN, na.rm = TRUE), .groups = "drop") %>%  # collapse multiple rows per year
+  pivot_wider(
+    names_from = YEAR,
+    values_from = FTERN,
+    names_prefix = "ftern_"
+  ) %>%
+  mutate(ftern_pct_change_11_16 = (ftern_2016 - ftern_2008) / ftern_2008 * 100)
+View(ftern_change)
 
 # join back to main dataset 
 hosp_2012 <- hosp_2012 %>%
@@ -102,6 +116,59 @@ average_outcomes <- panel_near %>%
     .groups = "drop"
   )
 print(average_outcomes)
+panel_near <- panel_near %>%
+  mutate(FTERN_per_bed = FTERN / BDTOT)
+
+# data sets by bed size
+panel_near <- panel_near %>%
+  group_by(MCRNUM) %>%
+  mutate(avg_bed = mean(BDTOT, na.rm = TRUE))
+
+hosp_2012 <- hosp_2012 %>%
+  group_by(MCRNUM) %>%
+  mutate(avg_bed = mean(BDTOT, na.rm = TRUE))
+
+# view panel_near only select var 
+panel_near_view <- panel_near %>%
+  select(MCRNUM, YEAR, treatment, control, BDTOT, FTERN, FTELPN, FTEMD, FTERES, avg_bed)
+
+panel_small <- panel_near %>%
+  filter(avg_bed <= 200) 
+
+panel_medium <- panel_near %>%
+  filter(avg_bed > 200 & avg_bed <= 400)
+
+panel_large <- panel_near %>%
+  filter(avg_bed > 400 & avg_bed < 600)
+
+panel_xl <- panel_near %>%
+  filter(avg_bed >= 600)
+
+panel_below <- panel_near %>%
+  filter(avg_bed < 192)
+
+panel_above <- panel_near %>%
+  filter(avg_bed >= 192)
+
+View(panel_near_view)
+
+library(dplyr)
+
+summary_bed_avg <- panel_near %>%
+  distinct(MCRNUM, treatment, avg_bed) %>%  # Ensure 1 row per hospital
+  group_by(treatment) %>%
+  summarise(
+    count = n(),
+    mean_bed = mean(avg_bed, na.rm = TRUE),
+    sd_bed = sd(avg_bed, na.rm = TRUE),
+    min_bed = min(avg_bed, na.rm = TRUE),
+    p25 = quantile(avg_bed, 0.25, na.rm = TRUE),
+    median_bed = median(avg_bed, na.rm = TRUE),
+    p75 = quantile(avg_bed, 0.75, na.rm = TRUE),
+    max_bed = max(avg_bed, na.rm = TRUE),
+    .groups = "drop"
+  )
+print(summary_bed_avg)
 
 
 # EVENT STUDY ---------------------------------------------# 
@@ -119,21 +186,87 @@ panel_near <- panel_near %>%
 
 esmatch_ftern <- feols(
   FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = panel_near %>% filter (BDTOT >= 800),
+  data = panel_small,
   cluster = ~MCRNUM,
 )
 summary(esmatch_ftern)
-png("800_FTERN.png", width = 800, height = 800)
+png("small_FTERN.png", width = 800, height = 800)
 iplot(esmatch_ftern,
       xlab = "Event Time",
-      main = "Event Study: FTERN and 2012 Penalties (match, 800+ beds)")
+      main = "Event Study: FTERN and 2012 Penalties (match, small hospitals)")
 dev.off()
 
-# count number of hospitals with beds in each group 
-n_hosp_30_200 <- panel_near %>%
-  filter(BDTOT >= 30 & BDTOT <= 200) %>%
-  summarise(n_hospitals = n_distinct(MCRNUM))
-print(n_hosp_30_200)
+# medium 
+esmed_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_medium,
+  cluster = ~MCRNUM,
+)
+summary(esmed_ftern)
+png("medium_FTERN.png", width = 800, height = 800)
+iplot(esmed_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, medium hospitals)")
+dev.off()
+
+# large 
+eslarge_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_large,
+  cluster = ~MCRNUM,
+)
+summary(eslarge_ftern)
+png("large_FTERN.png", width = 800, height = 800)
+iplot(eslarge_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, large hospitals)")
+dev.off()
+
+# xl 
+esxl_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_xl,
+  cluster = ~MCRNUM,
+)
+summary(esxl_ftern)
+png("XL_FTERN.png", width = 800, height = 800)
+iplot(esxl_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, XL hospitals)")
+dev.off()
+
+# below median
+esbelow_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_below,
+  cluster = ~MCRNUM,
+)
+summary(esbelow_ftern)
+png("below_FTERN.png", width = 800, height = 800)
+iplot(esbelow_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, below median hospitals)")
+dev.off()
+
+did <- feols(
+  FTERN ~ did | MCRNUM + YEAR,
+  data = panel_xl,
+  cluster = ~MCRNUM,
+)
+summary(did)
+# above median
+esabove_ftern <- feols(
+  FTERN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_above,
+  cluster = ~MCRNUM,
+)
+summary(esabove_ftern)
+png("above_FTERN.png", width = 800, height = 800)
+iplot(esabove_ftern,
+      xlab = "Event Time",
+      main = "Event Study: FTERN and 2012 Penalties (match, above median hospitals)")
+dev.off()
+
 
 n_hosp_200_500 <- panel_near %>%
   filter(BDTOT >= 200 & BDTOT < 400) %>%
@@ -150,46 +283,141 @@ n_hospitals_800 <- panel_near %>%
   summarise(n_hospitals = n_distinct(MCRNUM))
 print(n_hospitals_800)
 
-# FTERN per bed 
-panel_near <- panel_near %>%
-  mutate(FTERN_per_bed = FTERN / BDTOT)
 
+# FTERN per bed 
 esmatch_ftern_bed <- feols(
   FTERN_per_bed ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = panel_near %>% filter (BDTOT > 800),
+  data = panel_xl,
   cluster = ~MCRNUM,
 )
 summary(esmatch_ftern_bed)
 
+iplot(esmatch_ftern_bed,
+      xlab = "Event Time",
+      main = "Event Study: FTERN per Bed and 2012 Penalties (matched nearest, large hospitals)")
+
 # FTELPN 
-esmatch_ftelpn <- feols(
+essmall_ftelpn <- feols(
   FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = panel_near,
+  data = panel_small,
   cluster = ~MCRNUM,
 )
-summary(esmatch_ftelpn)
-png("FTELPN_Event_Study_Matched.png", width = 800, height = 800)
-iplot(esmatch_ftelpn,
+summary(essmall_ftelpn)
+png("small_FTELPN.png", width = 800, height = 800)
+iplot(essmall_ftelpn,
       xlab = "Event Time",
-      main = "Event Study: FTELPN and 2012 Penalties (matched nearest)")
+      main = "Event Study: FTELPN and 2012 Penalties (matched, small hospitals)")
 dev.off()   
 
+# medium
+esmed_ftelpn <- feols(
+  FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_medium,
+  cluster = ~MCRNUM,
+)
+summary(esmed_ftelpn)
+png("medium_FTELPN.png", width = 800, height = 800)
+iplot(esmed_ftelpn,
+      xlab = "Event Time",
+      main = "Event Study: FTELPN and 2012 Penalties (matched, medium hospitals)")
+dev.off()
+
+# large
+eslarge_ftelpn <- feols(
+  FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_large,
+  cluster = ~MCRNUM,
+)
+summary(eslarge_ftelpn)
+png("large_FTELPN.png", width = 800, height = 800)
+iplot(eslarge_ftelpn, 
+      xlab = "Event Time",
+      main = "Event Study: FTELPN and 2012 Penalties (matched, large hospitals)")
+dev.off() 
+
+# xl
+esxl_ftelpn <- feols(
+  FTELPN ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_xl,
+  cluster = ~MCRNUM,
+)
+summary(esxl_ftelpn)
+png("XL_FTELPN.png", width = 800, height = 800)
+iplot(esxl_ftelpn,    
+      xlab = "Event Time",
+      main = "Event Study: FTELPN and 2012 Penalties (matched, XL hospitals)")
+dev.off()
+
 # FTEMD 
-panel_positive_ftemd <- panel_near %>%
+panel_ftemd_small <- panel_small %>%
   group_by(MCRNUM) %>%
   filter(all(FTEMD > 0)) %>%
   ungroup()
 
-esmatch_ftemd <- feols(
+essmall_ftemd <- feols(
   FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = panel_positive_ftemd,
+  data = panel_ftemd_small,
   cluster = ~MCRNUM,
 )
-summary(esmatch_ftemd)
-png("FTEMD_Event_Study_Matched.png", width = 800, height = 800)
-iplot(esmatch_ftemd,
+summary(essmall_ftemd)
+png("small_FTEMD.png", width = 800, height = 800)
+iplot(essmall_ftemd,
       xlab = "Event Time",
-      main = "Event Study: FTEMD and 2012 Penalties (matched nearest)")
+      main = "Event Study: FTEMD and 2012 Penalties (matched, small hospitals)")
+dev.off()
+
+#medium
+panel_ftemd_medium <- panel_medium %>%
+  group_by(MCRNUM) %>%
+  filter(all(FTEMD > 0)) %>%
+  ungroup()
+
+esmed_ftemd <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_ftemd_medium,
+  cluster = ~MCRNUM,
+)
+summary(esmed_ftemd)
+png("medium_FTEMD.png", width = 800, height = 800)
+iplot(esmed_ftemd,
+      xlab = "Event Time",
+      main = "Event Study: FTEMD and 2012 Penalties (matched, medium hospitals)")
+dev.off()
+
+# large
+panel_ftemd_large <- panel_large %>%
+  group_by(MCRNUM) %>%
+  filter(all(FTEMD > 0)) %>%
+  ungroup()   
+
+eslarge_ftemd <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_ftemd_large,
+  cluster = ~MCRNUM,
+)
+summary(eslarge_ftemd)
+png("large_FTEMD.png", width = 800, height = 800)
+iplot(eslarge_ftemd,
+      xlab = "Event Time",
+      main = "Event Study: FTEMD and 2012 Penalties (matched, large hospitals)")
+dev.off()
+
+# xl
+panel_ftemd_xl <- panel_xl %>%
+  group_by(MCRNUM) %>%
+  filter(all(FTEMD > 0)) %>%  
+  ungroup()
+
+esxl_ftemd <- feols(
+  FTEMD ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
+  data = panel_ftemd_xl,
+  cluster = ~MCRNUM,
+)
+summary(esxl_ftemd)
+png("XL_FTEMD.png", width = 800, height = 800)
+iplot(esxl_ftemd,
+      xlab = "Event Time",
+      main = "Event Study: FTEMD and 2012 Penalties (matched, XL hospitals)")
 dev.off()
 
 # FTERES
@@ -199,3 +427,9 @@ esmatch_fteres <- feols(
   cluster = ~MCRNUM,
 )
 summary(esmatch_fteres)
+
+# view hospitals with over 800 beds 
+hosp_800 <- hosp_2012 %>%
+  filter(BDTOT >= 800) %>%
+  select(MCRNUM, YEAR, treatment, control, BDTOT, FTERN, FTELPN, FTEMD, FTERES) %>%
+  View()
