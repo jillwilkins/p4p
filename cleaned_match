@@ -267,27 +267,33 @@ iplot(esabove_ftern,
       main = "Event Study: FTERN and 2012 Penalties (match, above median hospitals)")
 dev.off()
 
+# count unique MCRNUM in panel_small 
+n_distinct(panel_small$MCRNUM)
+n_distinct(panel_medium$MCRNUM)
+n_distinct(panel_xl$MCRNUM)
+n_distinct(panel_above$MCRNUM)
+n_distinct(panel_below$MCRNUM)
 
-n_hosp_200_500 <- panel_near %>%
-  filter(BDTOT >= 200 & BDTOT < 400) %>%
+n_small <- panel_small %>%
+  filter(BDTOT >= 30 & BDTOT < 400) %>%
   summarise(n_hospitals = n_distinct(MCRNUM))
-print(n_hosp_200_400)
+print(n_small)
 
 n_hosp_400_600 <- panel_near %>%
   filter(BDTOT >= 400 & BDTOT < 600) %>%
   summarise(n_hospitals = n_distinct(MCRNUM))
 print(n_hosp_400_600)
 
-n_hospitals_800 <- panel_near %>%
-  filter(BDTOT >= 800) %>%
+n_hospitals_600 <- panel_xl %>%
+  filter(BDTOT >= 600) %>%
   summarise(n_hospitals = n_distinct(MCRNUM))
-print(n_hospitals_800)
+print(n_hospitals_600)
 
 
 # FTERN per bed 
 esmatch_ftern_bed <- feols(
   FTERN_per_bed ~ i(event_time, treatment, ref = -1) | MCRNUM + YEAR,
-  data = panel_xl,
+  data = panel_large,
   cluster = ~MCRNUM,
 )
 summary(esmatch_ftern_bed)

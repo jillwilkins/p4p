@@ -1,3 +1,4 @@
+library(ggplot2)
 # demean 
 trend_ftern <- hosp_data_combined %>%
   group_by(bed_group, treatment, YEAR) %>%
@@ -35,7 +36,7 @@ print(trend_ftern_bed)
 ggsave("new_trend_ftern_bed.png", plot = trend_ftern_bed, width = 8, height = 8, bg = "white")
 
 # ftern by group
-trend_ftern_group <- ggplot(panel_near_fixed, aes(x = YEAR, y = FTERN, color = factor(treatment))) +
+trend_ftern_group <- ggplot(panel_near, aes(x = YEAR, y = FTERN, color = factor(treatment))) +
   geom_line(stat = "summary", fun = "mean", size = 1.2) +
   geom_point(stat = "summary", fun = "mean", size = 2) +
   theme_minimal(base_size = 16) +  # increase overall font size
@@ -49,6 +50,7 @@ trend_ftern_group <- ggplot(panel_near_fixed, aes(x = YEAR, y = FTERN, color = f
     values = c("0" = "#1f77b4", "1" = "#ff7f0e"),
     labels = c("Control", "Treatment")
   )
+
 print(trend_ftern_group)
 ggsave("plots/trend_ftern_group.png", plot = trend_ftern_group, width = 8, height = 8, bg = "white")
 
